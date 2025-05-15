@@ -9,8 +9,8 @@ use serde::{Deserialize, Serialize};
 // Removed Arc import as it's now encapsulated in Form
 // Removed Field import as it's now encapsulated in Form
 
-use crate::form::Form; // Import the new Form struct
-use crate::field::Field; // Still need this for FieldViewModel mapping for now
+use crate::field::Field;
+use crate::form::Form; // Import the new Form struct // Still need this for FieldViewModel mapping for now
 
 // Helper to identify which field is being updated or interacted with
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Copy)]
@@ -120,7 +120,8 @@ impl crux_core::App for FormApp {
                 // The Form struct has `set_editing` for the whole form.
                 // Individual fields also have `set_editing`.
                 // For now, let's assume it's for a specific field, consistent with FieldIdent.
-                if !model.form.is_editing && editing { // If form is not editable, cannot start editing a field.
+                if !model.form.is_editing && editing {
+                    // If form is not editable, cannot start editing a field.
                     return Command::done();
                 }
                 match ident {
@@ -151,7 +152,7 @@ impl crux_core::App for FormApp {
                     model.form.set_editing(false); // Form is no longer editable
                 } else {
                     model.form.submitted = false; // Ensure submitted is false if validation fails
-                                               // is_editing remains true to allow corrections
+                                                  // is_editing remains true to allow corrections
                 }
                 render()
             }
@@ -179,18 +180,17 @@ impl crux_core::App for FormApp {
             editing: field.editing,
         };
 
-        let map_option_u32_field_to_view_model =
-            |field: &Field<Option<u32>>| FieldViewModel {
-                value: field.value.map_or_else(String::new, |v| v.to_string()),
-                initial_value: field
-                    .initial_value
-                    .map_or_else(String::new, |v| v.to_string()),
-                touched: field.touched,
-                dirty: field.dirty,
-                error: field.error.clone(),
-                valid: field.valid,
-                editing: field.editing,
-            };
+        let map_option_u32_field_to_view_model = |field: &Field<Option<u32>>| FieldViewModel {
+            value: field.value.map_or_else(String::new, |v| v.to_string()),
+            initial_value: field
+                .initial_value
+                .map_or_else(String::new, |v| v.to_string()),
+            touched: field.touched,
+            dirty: field.dirty,
+            error: field.error.clone(),
+            valid: field.valid,
+            editing: field.editing,
+        };
 
         let username_vm = map_field_to_view_model(&model.form.username);
         let email_vm = map_field_to_view_model(&model.form.email);
@@ -213,7 +213,7 @@ impl crux_core::App for FormApp {
             // Not submitted, is editing, no fields are dirty
             // Check for validation errors on initial load or after reset
             if !model.form.is_valid() {
-                 "Please correct the errors.".to_string()
+                "Please correct the errors.".to_string()
             } else {
                 "Please fill out the form.".to_string()
             }
@@ -241,11 +241,10 @@ impl crux_core::App for FormApp {
 //     }
 // }
 
-
 #[cfg(test)]
 mod tests {
     use super::{Event, FieldIdent, FormApp, Model};
-    use crux_core::{App as _};
+    use crux_core::App as _;
 
     #[test]
     fn initial_state() {
@@ -255,8 +254,11 @@ mod tests {
 
         assert_eq!(view.username.value, "");
         assert!(!view.username.valid);
-        assert_eq!(view.username.error.as_deref(), Some("Username cannot be empty"));
-        
+        assert_eq!(
+            view.username.error.as_deref(),
+            Some("Username cannot be empty")
+        );
+
         assert_eq!(view.email.value, "");
         assert!(!view.email.valid);
         assert_eq!(view.email.error.as_deref(), Some("Email cannot be empty"));
@@ -267,8 +269,11 @@ mod tests {
 
         assert_eq!(view.address.value, "");
         assert!(!view.address.valid);
-        assert_eq!(view.address.error.as_deref(), Some("Address cannot be empty"));
-        
+        assert_eq!(
+            view.address.error.as_deref(),
+            Some("Address cannot be empty")
+        );
+
         assert!(!view.submitted);
         assert!(view.is_editing_form); // Form starts in editing mode
         assert!(!view.can_submit); // Initially false due to invalid fields
@@ -281,7 +286,8 @@ mod tests {
         let mut model = Model::default();
 
         let _ = app.update(
-            Event::SetFieldEditing { // Assuming this event is still desired for UI hints
+            Event::SetFieldEditing {
+                // Assuming this event is still desired for UI hints
                 ident: FieldIdent::Username,
                 editing: true,
             },
@@ -349,7 +355,7 @@ mod tests {
             Some("Username must be at least 3 characters")
         );
     }
-    
+
     #[test]
     fn update_age_valid_and_invalid() {
         let app = FormApp::default();
@@ -386,7 +392,7 @@ mod tests {
             &mut model,
             &(),
         );
-        assert!(model.form.age.valid); 
+        assert!(model.form.age.valid);
         assert_eq!(model.form.age.value, None);
         assert!(model.form.age.error.is_none());
 
@@ -415,11 +421,10 @@ mod tests {
             &mut model,
             &(),
         );
-        assert!(model.form.age.valid); 
+        assert!(model.form.age.valid);
         assert_eq!(model.form.age.value, None);
         assert!(model.form.age.error.is_none());
     }
-
 
     #[test]
     fn submit_empty_form_fails_validation() {
@@ -432,13 +437,16 @@ mod tests {
         assert!(model.form.is_editing); // Stays true due to validation errors
 
         assert!(!model.form.username.valid);
-        assert_eq!(model.form.username.error.as_deref(), Some("Username cannot be empty"));
+        assert_eq!(
+            model.form.username.error.as_deref(),
+            Some("Username cannot be empty")
+        );
         // ... (other fields as in initial_state due to Form::default())
-        
+
         let view = app.view(&model);
         assert!(!view.can_submit);
         assert!(view.username.touched); // Submit touches all fields via form.touch_all()
-        // ... (other fields touched)
+                                        // ... (other fields touched)
     }
 
     #[test]
@@ -462,7 +470,10 @@ mod tests {
         assert!(model.form.is_editing);
         assert!(model.form.username.valid);
         assert!(!model.form.email.valid);
-        assert_eq!(model.form.email.error.as_deref(), Some("Email cannot be empty"));
+        assert_eq!(
+            model.form.email.error.as_deref(),
+            Some("Email cannot be empty")
+        );
 
         let view = app.view(&model);
         assert_eq!(view.email.error.as_deref(), Some("Email cannot be empty"));
@@ -475,10 +486,38 @@ mod tests {
         let mut model = Model::default();
 
         // Make all fields valid
-        let _ = app.update( Event::UpdateValue { ident: FieldIdent::Username, value: "ValidUser".to_string(), }, &mut model, &(),);
-        let _ = app.update( Event::UpdateValue { ident: FieldIdent::Email, value: "valid@example.com".to_string(), }, &mut model, &(),);
-        let _ = app.update( Event::UpdateValue { ident: FieldIdent::Age, value: "30".to_string(), }, &mut model, &(), );
-        let _ = app.update( Event::UpdateValue { ident: FieldIdent::Address, value: "123 Main St".to_string(), }, &mut model, &(),);
+        let _ = app.update(
+            Event::UpdateValue {
+                ident: FieldIdent::Username,
+                value: "ValidUser".to_string(),
+            },
+            &mut model,
+            &(),
+        );
+        let _ = app.update(
+            Event::UpdateValue {
+                ident: FieldIdent::Email,
+                value: "valid@example.com".to_string(),
+            },
+            &mut model,
+            &(),
+        );
+        let _ = app.update(
+            Event::UpdateValue {
+                ident: FieldIdent::Age,
+                value: "30".to_string(),
+            },
+            &mut model,
+            &(),
+        );
+        let _ = app.update(
+            Event::UpdateValue {
+                ident: FieldIdent::Address,
+                value: "123 Main St".to_string(),
+            },
+            &mut model,
+            &(),
+        );
 
         assert!(model.form.is_valid()); // Check all fields valid via Form method
 
@@ -499,12 +538,40 @@ mod tests {
     fn edit_after_submit() {
         let app = FormApp::default();
         let mut model = Model::default();
-        
+
         // Make form valid and submit it
-        let _ = app.update( Event::UpdateValue { ident: FieldIdent::Username, value: "User".to_string(), }, &mut model, &(),);
-        let _ = app.update( Event::UpdateValue { ident: FieldIdent::Email, value: "user@example.com".to_string(), }, &mut model, &(),);
-        let _ = app.update( Event::UpdateValue { ident: FieldIdent::Age, value: "42".to_string(), }, &mut model, &(),); // "42" -> Some(42)
-        let _ = app.update( Event::UpdateValue { ident: FieldIdent::Address, value: "Addr".to_string(), }, &mut model, &(),);
+        let _ = app.update(
+            Event::UpdateValue {
+                ident: FieldIdent::Username,
+                value: "User".to_string(),
+            },
+            &mut model,
+            &(),
+        );
+        let _ = app.update(
+            Event::UpdateValue {
+                ident: FieldIdent::Email,
+                value: "user@example.com".to_string(),
+            },
+            &mut model,
+            &(),
+        );
+        let _ = app.update(
+            Event::UpdateValue {
+                ident: FieldIdent::Age,
+                value: "42".to_string(),
+            },
+            &mut model,
+            &(),
+        ); // "42" -> Some(42)
+        let _ = app.update(
+            Event::UpdateValue {
+                ident: FieldIdent::Address,
+                value: "Addr".to_string(),
+            },
+            &mut model,
+            &(),
+        );
         let _ = app.update(Event::Submit, &mut model, &()); // Submit the form
 
         assert!(model.form.submitted);
@@ -531,9 +598,23 @@ mod tests {
         let mut model = Model::default();
 
         // Change some values
-        let _ = app.update( Event::UpdateValue { ident: FieldIdent::Username, value: "Test".to_string(), }, &mut model, &(), );
-        let _ = app.update( Event::UpdateValue { ident: FieldIdent::Email, value: "test@example.com".to_string(), }, &mut model, &(),);
-        
+        let _ = app.update(
+            Event::UpdateValue {
+                ident: FieldIdent::Username,
+                value: "Test".to_string(),
+            },
+            &mut model,
+            &(),
+        );
+        let _ = app.update(
+            Event::UpdateValue {
+                ident: FieldIdent::Email,
+                value: "test@example.com".to_string(),
+            },
+            &mut model,
+            &(),
+        );
+
         assert!(model.form.username.dirty);
 
         let _ = app.update(Event::ResetForm, &mut model, &());
@@ -543,11 +624,17 @@ mod tests {
         assert!(!model.form.username.dirty); // Default field is not dirty
         assert!(!model.form.username.touched); // Default field is not touched
         assert!(!model.form.username.valid); // Default username "" is invalid
-        assert_eq!(model.form.username.error.as_deref(), Some("Username cannot be empty"));
-        
+        assert_eq!(
+            model.form.username.error.as_deref(),
+            Some("Username cannot be empty")
+        );
+
         assert_eq!(model.form.email.value, "");
         assert!(!model.form.email.valid);
-        assert_eq!(model.form.email.error.as_deref(), Some("Email cannot be empty"));
+        assert_eq!(
+            model.form.email.error.as_deref(),
+            Some("Email cannot be empty")
+        );
 
         assert!(!model.form.submitted);
         assert!(model.form.is_editing); // Reset sets is_editing to true

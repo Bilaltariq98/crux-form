@@ -78,7 +78,7 @@ impl Form {
     pub fn is_valid(&self) -> bool {
         self.username.valid && self.email.valid && self.age.valid && self.address.valid
     }
-    
+
     // Placeholder for touch_all
     pub fn touch_all(&mut self) {
         self.username.touch();
@@ -94,7 +94,7 @@ impl Form {
         self.email = default_form.email;
         self.age = default_form.age;
         self.address = default_form.address;
-        
+
         self.submitted = false;
         self.is_editing = true;
         // After reset, fields are re-validated internally by their reset methods.
@@ -123,4 +123,4 @@ impl Form {
 // which implies `new_string` and `new_option_u32` might be helper methods on Field itself,
 // or the types are constructed and then passed to a generic `Field::new`.
 // The previous `Model::default()` used `Field::new_string` and `Field::new_option_u32`.
-// I'll assume these exist in `crate::field`. If not, this will be a compile error to fix. 
+// I'll assume these exist in `crate::field`. If not, this will be a compile error to fix.

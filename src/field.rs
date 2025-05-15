@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use std::fmt::Debug;
+use std::sync::Arc;
 
 // PartialEq and Eq removed because Box<dyn Fn(...)> doesn't implement them.
 // Can be manually implemented later if needed, comparing all fields except the validator.
@@ -28,14 +28,20 @@ impl<T: Debug> std::fmt::Debug for Field<T> {
             .field("error", &self.error)
             .field("valid", &self.valid)
             .field("editing", &self.editing)
-            .field("validator", &self.validator.as_ref().map(|_| "Arc<dyn Fn(...)>"))
+            .field(
+                "validator",
+                &self.validator.as_ref().map(|_| "Arc<dyn Fn(...)>"),
+            )
             .finish()
     }
 }
 
 // Added 'static lifetime and Send + Sync for T due to Arc<dyn Fn(&T)... Send + Sync>
 impl<T: PartialEq + Clone + Send + Sync + Debug + 'static> Field<T> {
-    pub fn new(initial: T, validator: Option<Arc<dyn Fn(&T) -> Result<(), String> + Send + Sync>>) -> Self {
+    pub fn new(
+        initial: T,
+        validator: Option<Arc<dyn Fn(&T) -> Result<(), String> + Send + Sync>>,
+    ) -> Self {
         let mut field = Self {
             value: initial.clone(),
             initial_value: initial,
@@ -103,14 +109,20 @@ impl<T: PartialEq + Clone + Send + Sync + Debug + 'static> Field<T> {
 
 // Specific constructor for String fields for convenience
 impl Field<String> {
-    pub fn new_string(initial: &str, validator: Option<Arc<dyn Fn(&String) -> Result<(), String> + Send + Sync>>) -> Self {
+    pub fn new_string(
+        initial: &str,
+        validator: Option<Arc<dyn Fn(&String) -> Result<(), String> + Send + Sync>>,
+    ) -> Self {
         Self::new(initial.to_string(), validator)
     }
 }
 
 // Specific constructor for Option<u32> fields
 impl Field<Option<u32>> {
-    pub fn new_option_u32(initial: Option<u32>, validator: Option<Arc<dyn Fn(&Option<u32>) -> Result<(), String> + Send + Sync>>) -> Self {
+    pub fn new_option_u32(
+        initial: Option<u32>,
+        validator: Option<Arc<dyn Fn(&Option<u32>) -> Result<(), String> + Send + Sync>>,
+    ) -> Self {
         Self::new(initial, validator)
     }
 }
