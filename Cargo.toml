@@ -1,0 +1,39 @@
+[package]
+name = "form_shared"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.66"
+
+[lib]
+crate-type = ["lib", "staticlib", "cdylib"]
+name = "form_shared" # Renamed from shared
+
+[features]
+typegen = ["crux_core/typegen"]
+
+[dependencies]
+async-sse = "5.1.0" # Kept for now, might be used by http or other general async
+async-std = "1.13.1"
+chrono = { version = "0.4.40", features = ["serde"] }
+crux_core = "0.14.0"
+crux_http = "0.13.0"
+futures = "0.3.31"
+lazy_static = "1.5.0"
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.140"
+uniffi = "0.29.1"
+url = "2.5.4"
+# wasm-bindgen and web-sys might not be strictly needed for core logic
+# but often useful for core if it has some platform-specific utils or for testing in wasm
+wasm-bindgen = "0.2.100"
+web-sys = { version = "0.3", features = ["console"] }
+
+
+[dev-dependencies]
+insta = { version = "1.42.2", features = ["yaml"] }
+
+[target.uniffi-bindgen.dependencies]
+uniffi = { version = "0.29.1", features = ["cli"] }
+
+[build-dependencies]
+uniffi = { version = "0.29.1", features = ["build"] } 

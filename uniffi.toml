@@ -1,0 +1,7 @@
+[bindings.kotlin]
+package_name = "com.example.form.shared"
+cdylib_name = "form_shared"
+
+[bindings.swift]
+cdylib_name = "form_shared_ffi"
+omit_argument_labels = true 
