@@ -76,9 +76,9 @@ pub enum Effect {
 }
 
 #[derive(Default)]
-pub struct FormApp;
+pub struct App;
 
-impl crux_core::App for FormApp {
+impl crux_core::App for App {
     type Model = Model;
     type Event = Event;
     type ViewModel = ViewModel;
@@ -243,12 +243,12 @@ impl crux_core::App for FormApp {
 
 #[cfg(test)]
 mod tests {
-    use super::{Event, FieldIdent, FormApp, Model};
+    use super::{Event, FieldIdent, App, Model};
     use crux_core::App as _;
 
     #[test]
     fn initial_state() {
-        let app = FormApp::default();
+        let app = App::default();
         let model = Model::default(); // Model::default() now initializes form with its defaults
         let view = app.view(&model);
 
@@ -282,7 +282,7 @@ mod tests {
 
     #[test]
     fn update_username_valid() {
-        let app = FormApp::default();
+        let app = App::default();
         let mut model = Model::default();
 
         let _ = app.update(
@@ -316,7 +316,7 @@ mod tests {
 
     #[test]
     fn update_username_invalid_empty() {
-        let app = FormApp::default();
+        let app = App::default();
         let mut model = Model::default();
         let _ = app.update(
             Event::SetFieldEditing {
@@ -358,7 +358,7 @@ mod tests {
 
     #[test]
     fn update_age_valid_and_invalid() {
-        let app = FormApp::default();
+        let app = App::default();
         let mut model = Model::default();
         let _ = app.update(
             Event::SetFieldEditing {
@@ -428,7 +428,7 @@ mod tests {
 
     #[test]
     fn submit_empty_form_fails_validation() {
-        let app = FormApp::default();
+        let app = App::default();
         let mut model = Model::default(); // Initial validation from Form::default()
 
         let _ = app.update(Event::Submit, &mut model, &());
@@ -451,7 +451,7 @@ mod tests {
 
     #[test]
     fn submit_partially_filled_form_shows_errors() {
-        let app = FormApp::default();
+        let app = App::default();
         let mut model = Model::default();
 
         let _ = app.update(
@@ -482,7 +482,7 @@ mod tests {
 
     #[test]
     fn submit_valid_form() {
-        let app = FormApp::default();
+        let app = App::default();
         let mut model = Model::default();
 
         // Make all fields valid
@@ -536,7 +536,7 @@ mod tests {
 
     #[test]
     fn edit_after_submit() {
-        let app = FormApp::default();
+        let app = App::default();
         let mut model = Model::default();
 
         // Make form valid and submit it
@@ -594,7 +594,7 @@ mod tests {
 
     #[test]
     fn reset_form_clears_fields_and_resets_state() {
-        let app = FormApp::default();
+        let app = App::default();
         let mut model = Model::default();
 
         // Change some values
@@ -646,7 +646,7 @@ mod tests {
 
     #[test]
     fn touch_field_updates_touched_flag() {
-        let app = FormApp::default();
+        let app = App::default();
         let mut model = Model::default();
 
         assert!(!model.form.username.touched);

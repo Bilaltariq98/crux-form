@@ -1,12 +1,12 @@
 [package]
-name = "form_shared"
+name = "shared"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.66"
 
 [lib]
 crate-type = ["lib", "staticlib", "cdylib"]
-name = "form_shared" # Renamed from shared
+name = "shared"
 
 [features]
 typegen = ["crux_core/typegen"]

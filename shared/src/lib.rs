@@ -1,7 +1,7 @@
 pub mod capabilities;
 pub mod field;
 pub mod form;
-pub mod form_app;
+pub mod app;
 
 use lazy_static::lazy_static;
 
@@ -9,7 +9,7 @@ pub use crux_core::bridge::{Bridge, Request};
 pub use crux_core::{Core, ResolveError};
 pub use crux_http as http;
 
-pub use form_app::*;
+pub use app::*;
 // We are not using sse capability for the form app for now
 // pub use capabilities::sse;
 
@@ -19,7 +19,7 @@ uniffi::include_scaffolding!("form"); // Changed from "shared"
 
 lazy_static! {
     // Changed App to FormApp
-    static ref CORE: Bridge<FormApp> = Bridge::new(Core::new());
+    static ref CORE: Bridge<App> = Bridge::new(Core::new());
 }
 
 #[cfg_attr(target_family = "wasm", wasm_bindgen::prelude::wasm_bindgen)]
