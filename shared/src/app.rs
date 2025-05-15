@@ -140,9 +140,6 @@ impl crux_core::App for App {
                 render()
             }
             Event::Submit => {
-                if !model.form.is_editing {
-                    return Command::done();
-                }
 
                 model.form.touch_all(); // Mark all fields as touched
                 model.form.validate_all(); // Validate all fields
@@ -160,6 +157,9 @@ impl crux_core::App for App {
                 // Allow editing the form again
                 model.form.submitted = false;
                 model.form.set_editing(true);
+
+                let log_message = format!("{:?}", model.form);
+                web_sys::console::log_1(&wasm_bindgen::JsValue::from_str(&log_message));
                 render()
             }
             Event::ResetForm => {

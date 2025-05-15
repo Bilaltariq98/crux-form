@@ -48,6 +48,7 @@ const initialAppViewModel = new ViewModel(
 export default function Home() {
   const [viewModel, setViewModel] = useState<ViewModel>(initialAppViewModel);
   const initialized = useRef(false);
+  const justEdited = useRef(false);
 
   useEffect(() => {
     if (!initialized.current) {
@@ -76,14 +77,25 @@ export default function Home() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // viewModel is now guaranteed to be non-null due to initial state
+
+    if (justEdited.current) {
+      console.log("Submit event ignored immediately after edit transition.");
+      return;
+    }
+
     if (viewModel.can_submit && viewModel.is_editing_form) {
       cruxUpdate(new EventVariantSubmit(), setViewModel);
     }
   };
 
   const handleEdit = () => {
+    console.log("View Model (before edit event)", viewModel);
+    justEdited.current = true;
     cruxUpdate(new EventVariantEdit(), setViewModel);
+
+    setTimeout(() => {
+      justEdited.current = false;
+    }, 0);
   };
 
   const handleReset = () => {
