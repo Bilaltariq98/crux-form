@@ -15,8 +15,9 @@ import {
   FieldIdentVariantEmail,
   FieldIdentVariantAge,
   FieldIdentVariantAddress,
-  EventVariantSelectAddressSuggestion,
+  EventVariantSelectSuggestion,
   AddressSuggestion,
+  FormViewModel,
 } from "shared_types/types/shared_types";
 
 // Helper to create initial FieldViewModel instances
@@ -34,15 +35,17 @@ const createInitialField = (
 
 // Create an initial ViewModel state
 const initialAppViewModel = new ViewModel(
-  createInitialField("", "", false, false, "Username cannot be empty", false, false),
-  createInitialField("", "", false, false, "Email cannot be empty", false, false),
-  createInitialField("", "", false, false, null, true, false),
-  createInitialField("", "", false, false, "Address cannot be empty", false, false),
-  [], // address_suggestions
-  false, // submitted
-  true,  // is_editing_form
-  "Please correct the errors.", // status_message
-  false  // can_submit
+  new FormViewModel(
+    createInitialField("", "", false, false, "Username cannot be empty", false, false),
+    createInitialField("", "", false, false, "Email cannot be empty", false, false),
+    createInitialField("", "", false, false, null, true, false),
+    createInitialField("", "", false, false, "Address cannot be empty", false, false),
+    false, // submitted
+    true,  // is_editing_form
+    "Please correct the errors.", // status_message
+    false  // can_submit
+  ),
+  [] // address_suggestions
 );
 
 export default function Home() {
@@ -57,19 +60,14 @@ export default function Home() {
     if (!initialized.current) {
       initialized.current = true;
 
-      // Initialize the core
-      init_core();
-
-      // Set up an interval to update the view
-      const interval = setInterval(() => {
-        const view = cruxView();
-        const viewModel = deserializeView(view) as ViewModel;
-        setViewModel(viewModel);
-      }, 100);
-
-      return () => clearInterval(interval);
+      init_core().then(() => {
+        // After WASM is initialized, get the current view from the core
+        const rawView = cruxView();
+        const currentView = deserializeView(rawView);
+        setViewModel(currentView);
+      });
     }
-  }, []);
+  }, []); // Run once on component mount
 
   const handleInputChange = (ident: FieldIdentVariantUsername | FieldIdentVariantEmail | FieldIdentVariantAge | FieldIdentVariantAddress, value: string) => {
     cruxUpdate(new EventVariantUpdateValue(ident, value), setViewModel);
@@ -88,7 +86,8 @@ export default function Home() {
     cruxUpdate(new EventVariantSubmit(), setViewModel);
   };
 
-  const handleEdit = () => {
+  const handleEdit = (e: React.FormEvent) => {
+    e.preventDefault();
     cruxUpdate(new EventVariantEdit(), setViewModel);
   };
 
@@ -141,14 +140,14 @@ export default function Home() {
 
       // Use the new SelectAddressSuggestion event
       cruxUpdate(
-        new EventVariantSelectAddressSuggestion(suggestion),
+        new EventVariantSelectSuggestion(suggestion),
         setViewModel
       );
     }
   };
 
   const renderAddressField = () => {
-    const field = viewModel.address;
+    const field = viewModel.form.address;
     const suggestions = viewModel.address_suggestions || [];
 
     return (
@@ -186,17 +185,17 @@ export default function Home() {
               handleFieldFocus(new FieldIdentVariantAddress(), true);
               setSelectedIndex(-1);
             }}
-            disabled={!viewModel.is_editing_form}
+            disabled={!viewModel.form.is_editing_form}
             className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none sm:text-sm
                        ${field.error && field.touched ? "border-red-500 focus:ring-red-500 focus:border-red-500" : "border-gray-300 dark:border-gray-600 focus:ring-indigo-500 focus:border-indigo-500"}
-                       ${!viewModel.is_editing_form ? "bg-gray-100 dark:bg-gray-700 cursor-not-allowed" : "bg-white dark:bg-gray-800 dark:text-gray-100"}`}
+                       ${!viewModel.form.is_editing_form ? "bg-gray-100 dark:bg-gray-700 cursor-not-allowed" : "bg-white dark:bg-gray-800 dark:text-gray-100"}`}
           />
           {field.touched && field.error && (
             <p className="mt-1 text-xs text-red-500">{field.error}</p>
           )}
           
           {/* Address Suggestions Dropdown */}
-          {suggestions.length > 0 && viewModel.is_editing_form && (
+          {suggestions.length > 0 && viewModel.form.is_editing_form && (
             <div 
               ref={suggestionsRef}
               className="absolute z-10 w-full mt-1 bg-white dark:bg-gray-800 shadow-lg rounded-md border border-gray-200 dark:border-gray-700 max-h-60 overflow-auto"
@@ -231,7 +230,7 @@ export default function Home() {
     }
 
     // viewModel is non-null here
-    let fieldKey: keyof ViewModel;
+    let fieldKey: keyof FormViewModel;
     let field: FieldViewModel; // Use the imported FieldViewModel type
 
     if (identInstance instanceof FieldIdentVariantUsername) {
@@ -249,7 +248,7 @@ export default function Home() {
 
     // Access the field directly; TypeScript should infer its type as FieldViewModel
     // eslint-disable-next-line prefer-const
-    field = viewModel[fieldKey] as FieldViewModel; 
+    field = viewModel.form[fieldKey] as FieldViewModel; 
 
     if (!field) return null; // Should not happen if ViewModel structure is correct
 
@@ -269,10 +268,10 @@ export default function Home() {
             handleFieldFocus(identInstance, false);
           }}
           onFocus={() => handleFieldFocus(identInstance, true)}
-          disabled={!viewModel.is_editing_form}
+          disabled={!viewModel.form.is_editing_form}
           className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none sm:text-sm
                      ${field.error && field.touched ? "border-red-500 focus:ring-red-500 focus:border-red-500" : "border-gray-300 dark:border-gray-600 focus:ring-indigo-500 focus:border-indigo-500"}
-                     ${!viewModel.is_editing_form ? "bg-gray-100 dark:bg-gray-700 cursor-not-allowed" : "bg-white dark:bg-gray-800 dark:text-gray-100"}`}
+                     ${!viewModel.form.is_editing_form ? "bg-gray-100 dark:bg-gray-700 cursor-not-allowed" : "bg-white dark:bg-gray-800 dark:text-gray-100"}`}
         />
         {field.touched && field.error && (
           <p className="mt-1 text-xs text-red-500">{field.error}</p>
@@ -303,17 +302,17 @@ export default function Home() {
           {renderField(new FieldIdentVariantAge(), "Age", "number")}
           {renderField(new FieldIdentVariantAddress(), "Address")}
 
-          {viewModel.status_message && (
-            <p className={`text-sm text-center ${viewModel.submitted && viewModel.username.valid && viewModel.email.valid && viewModel.address.valid && viewModel.age.valid ? "text-green-600" : "text-gray-600 dark:text-gray-400"}`}>
-              {viewModel.status_message}
+          {viewModel.form.status_message && (
+            <p className={`text-sm text-center ${viewModel.form.submitted && viewModel.form.username.valid && viewModel.form.email.valid && viewModel.form.address.valid && viewModel.form.age.valid ? "text-green-600" : "text-gray-600 dark:text-gray-400"}`}>
+              {viewModel.form.status_message}
             </p>
           )}
 
           <div className="flex flex-col sm:flex-row gap-3">
-            {!viewModel.submitted || viewModel.is_editing_form ? (
+            {!viewModel.form.submitted || viewModel.form.is_editing_form ? (
               <button
                 type="submit"
-                disabled={!viewModel.can_submit || !viewModel.is_editing_form}
+                disabled={!viewModel.form.can_submit || !viewModel.form.is_editing_form}
                 className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Submit
@@ -330,7 +329,7 @@ export default function Home() {
             <button
               type="button"
               onClick={handleReset}
-              disabled={!viewModel.is_editing_form && viewModel.submitted}
+              disabled={!viewModel.form.is_editing_form && viewModel.form.submitted}
               className="w-full flex justify-center py-2 px-4 border border-gray-300 dark:border-gray-500 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Reset

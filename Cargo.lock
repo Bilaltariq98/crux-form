@@ -2001,6 +2001,7 @@ dependencies = [
  "futures",
  "insta",
  "lazy_static",
+ "regex",
  "serde",
  "serde_json",
  "uniffi",

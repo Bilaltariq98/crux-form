@@ -8,13 +8,14 @@ import {
 import type {
   Effect,
   Event,
-    HttpResponse,
+    HttpResult,
   //   SseResponse,
 } from "shared_types/types/shared_types";
 import {
   EffectVariantRender,
   ViewModel,
     EffectVariantHttp,
+  HttpResultVariantOk,
   //   EffectVariantServerSentEvents,
   Request,
 } from "shared_types/types/shared_types";
@@ -26,7 +27,7 @@ import {
 import { request as http } from "./http";
 // import { request as sse } from "./sse";
 
-type Response = HttpResponse;
+type Response = HttpResult;
 
 export function update(
   event: Event,
@@ -59,8 +60,10 @@ async function processEffect(
     }
     case EffectVariantHttp: {
       const request = (effect as EffectVariantHttp).value;
-      const response = await http(request);
-      respond(id, response, callback);
+      const result = await http(request);
+      if (result instanceof HttpResultVariantOk) {
+        respond(id, result, callback);
+      }
       break;
     }
     // case EffectVariantServerSentEvents: {

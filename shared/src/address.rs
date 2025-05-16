@@ -13,4 +13,4 @@ pub struct AddressSuggestion {
 pub enum AddressSuggestionsResult {
     Success(Vec<AddressSuggestion>),
     Error,
-} 
+}

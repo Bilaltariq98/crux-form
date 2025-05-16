@@ -28,7 +28,7 @@ export async function request({
     new HttpResponse(
       response.status,
       responseHeaders,
-      Array.from(new Uint8Array(body))
+      new Uint8Array(body)
     )
   );
 }
