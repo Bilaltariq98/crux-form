@@ -158,8 +158,11 @@ impl crux_core::App for App {
                 model.form.submitted = false;
                 model.form.set_editing(true);
 
-                let log_message = format!("{:?}", model.form);
-                web_sys::console::log_1(&wasm_bindgen::JsValue::from_str(&log_message));
+                #[cfg(target_arch = "wasm32")]
+                {
+                    let log_message = format!("{:?}", model.form);
+                    web_sys::console::log_1(&wasm_bindgen::JsValue::from_str(&log_message));
+                }
                 render()
             }
             Event::ResetForm => {
