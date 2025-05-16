@@ -2,6 +2,7 @@
 members = [
     "shared",
     "shared_types",
+    "address_api",
 ]
 resolver = "1"
 

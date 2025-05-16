@@ -1,10 +1,10 @@
 "use client";
-import { useState, useEffect, ChangeEvent, useRef } from "react";
+import { useState, useEffect, ChangeEvent, useRef, KeyboardEvent } from "react";
 import { update as cruxUpdate, deserializeView } from "./crux/core";
-import init_core, { view as cruxView } from "shared/shared"; // Import init_core and view
+import init_core, { view as cruxView } from "shared/shared";
 import {
   ViewModel,
-  FieldViewModel, // Assuming this is the generated class for fields like username, email
+  FieldViewModel,
   EventVariantUpdateValue,
   EventVariantTouchField,
   EventVariantSetFieldEditing,
@@ -15,10 +15,11 @@ import {
   FieldIdentVariantEmail,
   FieldIdentVariantAge,
   FieldIdentVariantAddress,
+  EventVariantSelectAddressSuggestion,
+  AddressSuggestion,
 } from "shared_types/types/shared_types";
 
 // Helper to create initial FieldViewModel instances
-// Adjust constructor arguments if your generated FieldViewModel class is different
 const createInitialField = (
   value: string,
   initialValue: string,
@@ -28,17 +29,16 @@ const createInitialField = (
   valid: boolean,
   editing: boolean
 ): FieldViewModel => {
-  // Assuming FieldViewModel is a class with a constructor matching these arguments
   return new FieldViewModel(value, initialValue, touched, dirty, error, valid, editing);
 };
 
 // Create an initial ViewModel state
-// This assumes ViewModel is a class with a constructor matching these arguments
 const initialAppViewModel = new ViewModel(
-  createInitialField("", "", false, false, "Username cannot be empty", false, false), // username
-  createInitialField("", "", false, false, "Email cannot be empty", false, false),    // email
-  createInitialField("", "", false, false, null, true, false),                        // age (initially valid, no error)
-  createInitialField("", "", false, false, "Address cannot be empty", false, false),  // address
+  createInitialField("", "", false, false, "Username cannot be empty", false, false),
+  createInitialField("", "", false, false, "Email cannot be empty", false, false),
+  createInitialField("", "", false, false, null, true, false),
+  createInitialField("", "", false, false, "Address cannot be empty", false, false),
+  [], // address_suggestions
   false, // submitted
   true,  // is_editing_form
   "Please correct the errors.", // status_message
@@ -48,20 +48,28 @@ const initialAppViewModel = new ViewModel(
 export default function Home() {
   const [viewModel, setViewModel] = useState<ViewModel>(initialAppViewModel);
   const initialized = useRef(false);
-  const justEdited = useRef(false);
+  const addressInputRef = useRef<HTMLInputElement>(null);
+  const [selectedIndex, setSelectedIndex] = useState<number>(-1);
+  const suggestionsRef = useRef<HTMLDivElement>(null);
+  const addressBlurTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (!initialized.current) {
       initialized.current = true;
 
-      init_core().then(() => {
-        // After WASM is initialized, get the current view from the core
-        const rawView = cruxView();
-        const currentView = deserializeView(rawView);
-        setViewModel(currentView);
-      });
+      // Initialize the core
+      init_core();
+
+      // Set up an interval to update the view
+      const interval = setInterval(() => {
+        const view = cruxView();
+        const viewModel = deserializeView(view) as ViewModel;
+        setViewModel(viewModel);
+      }, 100);
+
+      return () => clearInterval(interval);
     }
-  }, []); // Run once on component mount
+  }, []);
 
   const handleInputChange = (ident: FieldIdentVariantUsername | FieldIdentVariantEmail | FieldIdentVariantAge | FieldIdentVariantAddress, value: string) => {
     cruxUpdate(new EventVariantUpdateValue(ident, value), setViewModel);
@@ -77,29 +85,139 @@ export default function Home() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-
-    if (justEdited.current) {
-      console.log("Submit event ignored immediately after edit transition.");
-      return;
-    }
-
-    if (viewModel.can_submit && viewModel.is_editing_form) {
-      cruxUpdate(new EventVariantSubmit(), setViewModel);
-    }
+    cruxUpdate(new EventVariantSubmit(), setViewModel);
   };
 
   const handleEdit = () => {
-    console.log("View Model (before edit event)", viewModel);
-    justEdited.current = true;
     cruxUpdate(new EventVariantEdit(), setViewModel);
-
-    setTimeout(() => {
-      justEdited.current = false;
-    }, 0);
   };
 
   const handleReset = () => {
+    // Clear any pending address blur timeout
+    if (addressBlurTimeoutRef.current) {
+      clearTimeout(addressBlurTimeoutRef.current);
+      addressBlurTimeoutRef.current = null;
+    }
     cruxUpdate(new EventVariantResetForm(), setViewModel);
+  };
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    const suggestions = viewModel.address_suggestions || [];
+    if (!suggestions.length) return;
+
+    switch (e.key) {
+      case "ArrowDown":
+        e.preventDefault();
+        setSelectedIndex(prev => (prev + 1) % suggestions.length);
+        break;
+      case "ArrowUp":
+        e.preventDefault();
+        setSelectedIndex(prev => (prev - 1 + suggestions.length) % suggestions.length);
+        break;
+      case "Enter":
+        e.preventDefault();
+        if (selectedIndex >= 0 && selectedIndex < suggestions.length) {
+          handleSuggestionClick(suggestions[selectedIndex]);
+        }
+        break;
+      case "Escape":
+        e.preventDefault();
+        setSelectedIndex(-1);
+        break;
+    }
+  };
+
+  const handleSuggestionClick = (suggestion: AddressSuggestion, e?: React.MouseEvent<HTMLButtonElement>) => {
+    if (addressInputRef.current) {
+      // Prevent the button click from triggering blur
+      e?.preventDefault();
+      e?.stopPropagation();
+      
+      // Clear any pending blur timeout since we're handling this directly
+      if (addressBlurTimeoutRef.current) {
+        clearTimeout(addressBlurTimeoutRef.current);
+        addressBlurTimeoutRef.current = null;
+      }
+
+      // Use the new SelectAddressSuggestion event
+      cruxUpdate(
+        new EventVariantSelectAddressSuggestion(suggestion),
+        setViewModel
+      );
+    }
+  };
+
+  const renderAddressField = () => {
+    const field = viewModel.address;
+    const suggestions = viewModel.address_suggestions || [];
+
+    return (
+      <div className="mb-4 relative">
+        <label htmlFor="address" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+          Address
+        </label>
+        <div className="relative">
+          <input
+            ref={addressInputRef}
+            type="text"
+            id="address"
+            name="address"
+            value={field.value}
+            onChange={(e: ChangeEvent<HTMLInputElement>) => {
+              // Only trigger value update and suggestions fetch when typing
+              handleInputChange(new FieldIdentVariantAddress(), e.target.value);
+            }}
+            onKeyDown={handleKeyDown}
+            onBlur={() => {
+              // Only set the timeout if we're not selecting a suggestion
+              if (selectedIndex === -1) {
+                if (addressBlurTimeoutRef.current) {
+                  clearTimeout(addressBlurTimeoutRef.current);
+                }
+                addressBlurTimeoutRef.current = setTimeout(() => {
+                  handleFieldTouch(new FieldIdentVariantAddress());
+                  handleFieldFocus(new FieldIdentVariantAddress(), false);
+                  setSelectedIndex(-1);
+                  addressBlurTimeoutRef.current = null;
+                }, 200);
+              }
+            }}
+            onFocus={() => {
+              handleFieldFocus(new FieldIdentVariantAddress(), true);
+              setSelectedIndex(-1);
+            }}
+            disabled={!viewModel.is_editing_form}
+            className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none sm:text-sm
+                       ${field.error && field.touched ? "border-red-500 focus:ring-red-500 focus:border-red-500" : "border-gray-300 dark:border-gray-600 focus:ring-indigo-500 focus:border-indigo-500"}
+                       ${!viewModel.is_editing_form ? "bg-gray-100 dark:bg-gray-700 cursor-not-allowed" : "bg-white dark:bg-gray-800 dark:text-gray-100"}`}
+          />
+          {field.touched && field.error && (
+            <p className="mt-1 text-xs text-red-500">{field.error}</p>
+          )}
+          
+          {/* Address Suggestions Dropdown */}
+          {suggestions.length > 0 && viewModel.is_editing_form && (
+            <div 
+              ref={suggestionsRef}
+              className="absolute z-10 w-full mt-1 bg-white dark:bg-gray-800 shadow-lg rounded-md border border-gray-200 dark:border-gray-700 max-h-60 overflow-auto"
+            >
+              {suggestions.map((suggestion: AddressSuggestion, index: number) => (
+                <button
+                  key={index}
+                  type="button"
+                  onClick={(e) => handleSuggestionClick(suggestion, e)}
+                  onMouseEnter={() => setSelectedIndex(index)}
+                  className={`w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none focus:bg-gray-100 dark:focus:bg-gray-700
+                    ${selectedIndex === index ? 'bg-gray-100 dark:bg-gray-700' : ''}`}
+                >
+                  {suggestion.combined}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
   };
 
   const renderField = (
@@ -107,6 +225,11 @@ export default function Home() {
     label: string,
     type: string = "text"
   ) => {
+    // Special handling for address field
+    if (identInstance.constructor.name === "FieldIdentVariantAddress") {
+      return renderAddressField();
+    }
+
     // viewModel is non-null here
     let fieldKey: keyof ViewModel;
     let field: FieldViewModel; // Use the imported FieldViewModel type

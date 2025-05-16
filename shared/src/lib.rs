@@ -2,6 +2,7 @@ pub mod capabilities;
 pub mod field;
 pub mod form;
 pub mod app;
+pub mod address;
 
 use lazy_static::lazy_static;
 

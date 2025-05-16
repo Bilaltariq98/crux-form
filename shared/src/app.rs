@@ -3,14 +3,14 @@ use crux_core::{
     render::{render, RenderOperation},
     Command,
 };
-// We might need Http capability later for submitting the form
-// use crux_http::{command::Http, protocol::HttpRequest};
+use crux_http::{command::Http, protocol::HttpRequest, HttpError, Response};
 use serde::{Deserialize, Serialize};
-// Removed Arc import as it's now encapsulated in Form
-// Removed Field import as it's now encapsulated in Form
 
 use crate::field::Field;
-use crate::form::Form; // Import the new Form struct // Still need this for FieldViewModel mapping for now
+use crate::form::Form;
+use crate::address::{AddressSuggestion, AddressSuggestionsResult};
+
+const ADDRESS_API_URL: &str = "http://localhost:8000/api/suggestions";
 
 // Helper to identify which field is being updated or interacted with
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Copy)]
@@ -23,13 +23,15 @@ pub enum FieldIdent {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Model {
-    pub form: Form, // Model now contains an instance of Form
+    pub form: Form,
+    pub address_suggestions: Vec<AddressSuggestion>,
 }
 
 impl Default for Model {
     fn default() -> Self {
         Self {
             form: Form::default(), // Initialize Form using its Default impl
+            address_suggestions: Vec::new(),
         }
     }
 }
@@ -53,6 +55,7 @@ pub struct ViewModel {
     pub email: FieldViewModel,
     pub age: FieldViewModel,
     pub address: FieldViewModel,
+    pub address_suggestions: Vec<AddressSuggestion>,
     pub submitted: bool,
     pub is_editing_form: bool, // This maps to form.is_editing
     pub status_message: String,
@@ -63,16 +66,19 @@ pub struct ViewModel {
 pub enum Event {
     UpdateValue { ident: FieldIdent, value: String },
     TouchField { ident: FieldIdent },
-    SetFieldEditing { ident: FieldIdent, editing: bool }, // This might now apply to the whole form or specific fields if Form manages that
+    SetFieldEditing { ident: FieldIdent, editing: bool },
     Submit,
-    Edit, // Allows re-editing the form after submission
+    Edit,
     ResetForm,
+    FetchAddressSuggestions { query: String },
+    AddressSuggestionsReceived(AddressSuggestionsResult),
+    SelectAddressSuggestion { suggestion: AddressSuggestion },
 }
 
 #[effect(typegen)]
 pub enum Effect {
     Render(RenderOperation),
-    // We might add other effects later, e.g., for HTTP requests on submit
+    Http(HttpRequest),
 }
 
 #[derive(Default)]
@@ -98,7 +104,26 @@ impl crux_core::App for App {
                     FieldIdent::Age => {
                         model.form.age.update_value(value.parse::<u32>().ok());
                     }
-                    FieldIdent::Address => model.form.address.update_value(value),
+                    FieldIdent::Address => {
+                        model.form.address.update_value(value.clone());
+                        if model.form.is_editing {
+                            return Http::get(format!("{}?query={}", ADDRESS_API_URL, value))
+                                .expect_json()
+                                .build()
+                                .then_send(|result: Result<Response<Vec<AddressSuggestion>>, HttpError>| {
+                                    Event::AddressSuggestionsReceived(match result {
+                                        Ok(mut response) => {
+                                            if let Some(suggestions) = response.take_body() {
+                                                AddressSuggestionsResult::Success(suggestions)
+                                            } else {
+                                                AddressSuggestionsResult::Error
+                                            }
+                                        }
+                                        Err(_) => AddressSuggestionsResult::Error,
+                                    })
+                                });
+                        }
+                    },
                 }
                 render()
             }
@@ -110,43 +135,74 @@ impl crux_core::App for App {
                     FieldIdent::Username => model.form.username.touch(),
                     FieldIdent::Email => model.form.email.touch(),
                     FieldIdent::Age => model.form.age.touch(),
-                    FieldIdent::Address => model.form.address.touch(),
+                    FieldIdent::Address => {
+                        model.form.address.touch();
+                        model.address_suggestions.clear();
+                    },
                 }
                 render()
             }
             Event::SetFieldEditing { ident, editing } => {
-                // This event might need re-evaluation.
-                // Does it set the whole form's editing state or a specific field?
-                // The Form struct has `set_editing` for the whole form.
-                // Individual fields also have `set_editing`.
-                // For now, let's assume it's for a specific field, consistent with FieldIdent.
                 if !model.form.is_editing && editing {
-                    // If form is not editable, cannot start editing a field.
                     return Command::done();
                 }
                 match ident {
                     FieldIdent::Username => model.form.username.set_editing(editing),
                     FieldIdent::Email => model.form.email.set_editing(editing),
                     FieldIdent::Age => model.form.age.set_editing(editing),
-                    FieldIdent::Address => model.form.address.set_editing(editing),
+                    FieldIdent::Address => {
+                        model.form.address.set_editing(editing);
+                        if !editing {
+                            model.address_suggestions.clear();
+                        }
+                    },
                 }
-                // If *any* field starts editing, ensure the main form is_editing flag is true.
-                // However, the Form's set_editing(true) might be better controlled by an `Edit` event.
-                // This part depends on desired UX. For now, setting field editing implies form might be in an editing phase.
-                // If `editing` is false for all fields, should `model.form.is_editing` become false?
-                // This logic is getting complex here and might be better managed by `Form::set_editing`.
-                // A simpler approach: an `Edit` event makes the whole form editable.
-                // `Submit` makes it non-editable. `SetFieldEditing` just toggles a field's focus/UI state.
+                render()
+            }
+            Event::FetchAddressSuggestions { query } => {
+                if model.form.is_editing {
+                    Http::get(format!("{}?query={}", ADDRESS_API_URL, query))
+                        .expect_json()
+                        .build()
+                        .then_send(|result: Result<Response<Vec<AddressSuggestion>>, HttpError>| {
+                            Event::AddressSuggestionsReceived(match result {
+                                Ok(mut response) => {
+                                    if let Some(suggestions) = response.take_body() {
+                                        AddressSuggestionsResult::Success(suggestions)
+                                    } else {
+                                        AddressSuggestionsResult::Error
+                                    }
+                                }
+                                Err(_) => AddressSuggestionsResult::Error,
+                            })
+                        })
+                } else {
+                    Command::done()
+                }
+            }
+            Event::AddressSuggestionsReceived(result) => {
+                match result {
+                    AddressSuggestionsResult::Success(suggestions) => {
+                        // Filter out suggestions that exactly match the current address
+                        model.address_suggestions = suggestions
+                            .into_iter()
+                            .filter(|s| s.combined != model.form.address.value)
+                            .collect();
+                    }
+                    AddressSuggestionsResult::Error => {
+                        model.address_suggestions.clear();
+                    }
+                }
                 render()
             }
             Event::Submit => {
-
                 model.form.touch_all(); // Mark all fields as touched
                 model.form.validate_all(); // Validate all fields
 
                 if model.form.is_valid() {
                     model.form.submitted = true;
                     model.form.set_editing(false); // Form is no longer editable
+                    model.address_suggestions.clear(); // Clear suggestions on submit
                 } else {
                     model.form.submitted = false; // Ensure submitted is false if validation fails
                                                   // is_editing remains true to allow corrections
@@ -157,6 +213,7 @@ impl crux_core::App for App {
                 // Allow editing the form again
                 model.form.submitted = false;
                 model.form.set_editing(true);
+                model.address_suggestions.clear(); // Clear suggestions when starting to edit
 
                 #[cfg(target_arch = "wasm32")]
                 {
@@ -167,6 +224,21 @@ impl crux_core::App for App {
             }
             Event::ResetForm => {
                 model.form.reset(); // Resets form to default, sets is_editing to true
+                model.address_suggestions.clear(); // Clear suggestions on reset
+                render()
+            }
+            Event::SelectAddressSuggestion { suggestion } => {
+                if !model.form.is_editing {
+                    return Command::done();
+                }
+                
+                // Update the address value
+                model.form.address.update_value(suggestion.combined.clone());
+                // Mark the field as touched since it's a valid selection
+                model.form.address.touch();
+                // Clear suggestions immediately
+                model.address_suggestions.clear();
+                
                 render()
             }
         }
@@ -227,6 +299,7 @@ impl crux_core::App for App {
             email: email_vm,
             age: age_vm,
             address: address_vm,
+            address_suggestions: model.address_suggestions.clone(),
             submitted: model.form.submitted,
             is_editing_form: model.form.is_editing,
             can_submit: model.form.can_submit(),
@@ -235,19 +308,14 @@ impl crux_core::App for App {
     }
 }
 
-// The Model::new() method is no longer needed as Default is sufficient and simpler.
-// If specific initialization beyond Form::default() was needed for Model,
-// Model::new() could be:
-// impl Model {
-//     pub fn new() -> Self {
-//         Self { form: Form::new() /* or custom Form setup */ }
-//     }
-// }
-
 #[cfg(test)]
 mod tests {
-    use super::{Event, FieldIdent, App, Model};
-    use crux_core::App as _;
+    use super::{Event, FieldIdent, App, Model, AddressSuggestion, Effect, ADDRESS_API_URL, AddressSuggestionsResult};
+    use crux_core::{App as _};
+    use crux_http::{
+        protocol::{HttpRequest, HttpResult, HttpResponse},
+        HttpError,
+    };
 
     #[test]
     fn initial_state() {
@@ -665,4 +733,260 @@ mod tests {
     // Tests for SetFieldEditing might need adjustment based on how it's intended to interact
     // with the overall form's editing state (model.form.is_editing).
     // The current implementation of SetFieldEditing in `update` only affects individual field's `editing` flag.
+
+    #[test]
+    fn address_suggestions_are_cleared_when_editing_disabled() {
+        let app = App::default();
+        let mut model = Model::default();
+
+        // Add some suggestions
+        model.address_suggestions = vec![
+            AddressSuggestion {
+                street: "123 Main St".to_string(),
+                city: "London".to_string(),
+                postcode: "SW1A 1AA".to_string(),
+                country: "UK".to_string(),
+                combined: "123 Main St, London, SW1A 1AA, UK".to_string(),
+            }
+        ];
+
+        // Disable editing for address field
+        let _ = app.update(
+            Event::SetFieldEditing {
+                ident: FieldIdent::Address,
+                editing: false,
+            },
+            &mut model,
+            &(),
+        );
+
+        assert!(model.address_suggestions.is_empty());
+    }
+
+    #[test]
+    fn address_suggestions_are_cleared_on_form_submit() {
+        let app = App::default();
+        let mut model = Model::default();
+
+        // Add some suggestions
+        model.address_suggestions = vec![
+            AddressSuggestion {
+                street: "123 Main St".to_string(),
+                city: "London".to_string(),
+                postcode: "SW1A 1AA".to_string(),
+                country: "UK".to_string(),
+                combined: "123 Main St, London, SW1A 1AA, UK".to_string(),
+            }
+        ];
+
+        // Make form valid and submit
+        let _ = app.update(
+            Event::UpdateValue {
+                ident: FieldIdent::Username,
+                value: "ValidUser".to_string(),
+            },
+            &mut model,
+            &(),
+        );
+        let _ = app.update(
+            Event::UpdateValue {
+                ident: FieldIdent::Email,
+                value: "valid@example.com".to_string(),
+            },
+            &mut model,
+            &(),
+        );
+        let _ = app.update(
+            Event::UpdateValue {
+                ident: FieldIdent::Age,
+                value: "30".to_string(),
+            },
+            &mut model,
+            &(),
+        );
+        let _ = app.update(
+            Event::UpdateValue {
+                ident: FieldIdent::Address,
+                value: "123 Main St".to_string(),
+            },
+            &mut model,
+            &(),
+        );
+
+        let _ = app.update(Event::Submit, &mut model, &());
+
+        assert!(model.address_suggestions.is_empty());
+    }
+
+    #[test]
+    fn address_suggestions_are_cleared_on_form_reset() {
+        let app = App::default();
+        let mut model = Model::default();
+
+        // Add some suggestions
+        model.address_suggestions = vec![
+            AddressSuggestion {
+                street: "123 Main St".to_string(),
+                city: "London".to_string(),
+                postcode: "SW1A 1AA".to_string(),
+                country: "UK".to_string(),
+                combined: "123 Main St, London, SW1A 1AA, UK".to_string(),
+            }
+        ];
+
+        let _ = app.update(Event::ResetForm, &mut model, &());
+
+        assert!(model.address_suggestions.is_empty());
+    }
+
+    #[test]
+    fn address_suggestions_are_cleared_on_form_edit() {
+        let app = App::default();
+        let mut model = Model::default();
+
+        // Add some suggestions
+        model.address_suggestions = vec![
+            AddressSuggestion {
+                street: "123 Main St".to_string(),
+                city: "London".to_string(),
+                postcode: "SW1A 1AA".to_string(),
+                country: "UK".to_string(),
+                combined: "123 Main St, London, SW1A 1AA, UK".to_string(),
+            }
+        ];
+
+        let _ = app.update(Event::Edit, &mut model, &());
+
+        assert!(model.address_suggestions.is_empty());
+    }
+
+    #[test]
+    fn address_field_updates_trigger_suggestion_fetch() {
+        let app = App::default();
+        let mut model = Model::default();
+
+        // Ensure we're in editing mode
+        model.form.set_editing(true);
+
+        // Update address field to trigger suggestion fetch
+        let mut cmd = app.update(
+            Event::UpdateValue {
+                ident: FieldIdent::Address,
+                value: "test".to_string(),
+            },
+            &mut model,
+            &(),
+        );
+
+        // Verify that the address field was updated
+        assert_eq!(model.form.address.value, "test");
+
+        // The command should contain an HTTP request
+        let mut request = cmd.effects().next().unwrap().expect_http();
+        assert_eq!(
+            &request.operation,
+            &HttpRequest::get(format!("{}?query={}", ADDRESS_API_URL, "test"))
+                .build()
+        );
+
+        // Simulate a successful response from the API
+        let suggestions = vec![
+            AddressSuggestion {
+                street: "123 Test St".to_string(),
+                city: "London".to_string(),
+                postcode: "SW1A 1AA".to_string(),
+                country: "UK".to_string(),
+                combined: "123 Test St, London, SW1A 1AA, UK".to_string(),
+            }
+        ];
+
+        let response = HttpResponse::ok()
+            .header("Content-Type", "application/json")
+            .body(serde_json::to_string(&suggestions).unwrap())
+            .build();
+
+        // Resolve the request with our simulated response
+        request.resolve(HttpResult::Ok(response)).unwrap();
+
+        // This should generate an AddressSuggestionsReceived event
+        let event = cmd.events().next().unwrap().clone();
+        assert!(matches!(event, Event::AddressSuggestionsReceived(AddressSuggestionsResult::Success(_))));
+
+        // Send the AddressSuggestionsReceived event back to the app
+        let mut cmd = app.update(event.clone(), &mut model, &());
+
+        // The app should ask to render
+        assert!(matches!(cmd.effects().next().unwrap(), Effect::Render(_)));
+
+        // Verify that the suggestions were updated in the model
+        if let Event::AddressSuggestionsReceived(AddressSuggestionsResult::Success(suggestions)) = event {
+            assert_eq!(model.address_suggestions, suggestions);
+        } else {
+            panic!("Expected AddressSuggestionsResult::Success");
+        }
+    }
+
+    #[test]
+    fn address_suggestions_handles_error_response() {
+        let app = App::default();
+        let mut model = Model::default();
+
+        // Ensure we're in editing mode
+        model.form.set_editing(true);
+
+        // Update address field to trigger suggestion fetch
+        let mut cmd = app.update(
+            Event::UpdateValue {
+                ident: FieldIdent::Address,
+                value: "test".to_string(),
+            },
+            &mut model,
+            &(),
+        );
+
+        // Get the HTTP request
+        let mut request = cmd.effects().next().unwrap().expect_http();
+
+        // Simulate an error response
+        request.resolve(HttpResult::Err(HttpError::Timeout)).unwrap();
+
+        // This should generate an AddressSuggestionsReceived event with an error
+        let event = cmd.events().next().unwrap().clone();
+        assert!(matches!(event, Event::AddressSuggestionsReceived(AddressSuggestionsResult::Error)));
+
+        // Send the error event back to the app
+        let mut cmd = app.update(event.clone(), &mut model, &());
+
+        // The app should ask to render
+        assert!(matches!(cmd.effects().next().unwrap(), Effect::Render(_)));
+
+        // Verify that suggestions were cleared
+        assert!(model.address_suggestions.is_empty());
+    }
+
+    // Add a test that explicitly uses all variants of AddressSuggestionsResult
+    #[test]
+    fn test_address_suggestions_result_variants() {
+        // This test exists to help the type tracer see all variants
+        let success = AddressSuggestionsResult::Success(vec![
+            AddressSuggestion {
+                street: "123 Test St".to_string(),
+                city: "London".to_string(),
+                postcode: "SW1A 1AA".to_string(),
+                country: "UK".to_string(),
+                combined: "123 Test St, London, SW1A 1AA, UK".to_string(),
+            }
+        ]);
+        let error = AddressSuggestionsResult::Error;
+
+        // Use both variants in a way that forces the type tracer to analyze them
+        let _ = match success {
+            AddressSuggestionsResult::Success(_) => true,
+            AddressSuggestionsResult::Error => false,
+        };
+        let _ = match error {
+            AddressSuggestionsResult::Success(_) => false,
+            AddressSuggestionsResult::Error => true,
+        };
+    }
 }
